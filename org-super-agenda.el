@@ -445,7 +445,10 @@ date.  The `ts-date' text-property is matched against. "
            (when-let ((day (org-find-text-property-in-string 'ts-date item)))
              (= day today)))
           (_ ;; Oops
-           (user-error "Argument to `:date' must be `t', `nil', or `today'"))))
+           (user-error "Argument to `:date' must be `t', `nil', or `today'")))
+  :custom-type '(choice (const :tag "Any date" t)
+                        (const :tag "No date" nil)
+                        (const :tag "Today" today)))
 
 (org-super-agenda--defgroup time-grid
   "Group items that appear on a time grid.
