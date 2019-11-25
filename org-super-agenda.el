@@ -305,6 +305,47 @@ marker."
     (setq typedef (cadr typedef)))
   (setq org-super-agenda-group-custom-types
         (plist-put org-super-agenda-group-custom-types selector typedef)))
+
+(defun org-super-agenda--make-selectors-for-custom-type ()
+  "Make the customization type representing an individual group.
+This yields a `plist' composite type specification, with each
+selector appearing under :options."
+  (let ((choices
+         (cl-loop for (keyword typedef) on org-super-agenda-group-custom-types by 'cddr
+                  collect (list keyword typedef))))
+    `(plist :options ((:name (choice
+                              (const :tag "Automatic" nil)
+                              string
+                              (const :tag "None" none)))
+                      ;; I wish this one had a preview.
+                      ;; It’s a total hack as it is, though.
+                      (:face (choice
+                              (face :tag "Existing face")
+                              (custom-face-edit :tag "Custom face attributes"
+                                                ;; Get the attributes from the `custom-face-edit' widget
+                                                ,@(plist-get (cdr custom-face-edit) :args)
+                                                ;; ... and add one more
+                                                (group :inline t :sibling-args nil
+                                                       (const :format "" :append)
+                                                       (choice :tag "Append"
+                                                               (const :tag "Yes" t)
+                                                               (const :tag "No" nil))))))
+                      (:transformer (choice (function :help-echo "A function, to which the item string will be passed as argument")
+                                            (sexp :help-echo "A sexp, in which the item string is bound to `it'")))
+                      ,@choices
+                      (:order integer)
+                      (:and (plist :options ,choices))
+                      (:not (plist :options ,choices))
+                      (:discard (plist :options ,choices))))))
+
+(defun org-super-agenda--add-the-big-custom-type ()
+  "Create and add the customization type for `org-super-agenda-groups'.
+If you define new group types in your own code, be sure to run this
+function afterward." ;; TODO mention this in info somewhere
+  (put 'org-super-agenda-groups 'custom-type
+       `(repeat
+         ,(org-super-agenda--make-selectors-for-custom-type))))
+
 ;;;; Minor mode
 
 ;;;###autoload
@@ -1127,6 +1168,8 @@ actually the ORDER for the groups."
        (s-join "\n" it)))
 
 ;;;; Footer
+
+(org-super-agenda--add-the-big-custom-type)
 
 (provide 'org-super-agenda)
 
