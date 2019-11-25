@@ -153,7 +153,7 @@ map).")
 (defcustom org-super-agenda-groups nil
   "List of groups to apply to agenda views when `org-super-agenda-mode' is on.
 See readme for information."
-  :type 'list)
+  :type '(repeat sexp))
 
 (defcustom org-super-agenda-group-property-name "agenda-group"
   "Name of the Org property used by the :auto-group selector."
