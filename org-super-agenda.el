@@ -127,6 +127,10 @@
   "List of agenda grouping keywords and associated functions.
 Populated automatically by `org-super-agenda--defgroup'.")
 
+(defvar org-super-agenda-group-custom-types nil
+  "List of agenda grouping keywords and associated `customize' types.
+Populated automatically by `org-super-agenda--defgroup'.")
+
 (defvar org-super-agenda-auto-selector-keywords nil
   "Keywords used as auto-grouping selectors.
 Populated automatically by `org-super-agenda--def-auto-group'.")
@@ -295,6 +299,12 @@ marker."
     (buffer-substring (org-entry-beginning-position)
                       (org-entry-end-position))))
 
+(defun org-super-agenda--add-custom-type (selector typedef)
+  "Add SELECTOR & its TYPEDEF to `org-super-agenda-group-custom-types'."
+  (when (eq (car-safe typedef) 'quote)
+    (setq typedef (cadr typedef)))
+  (setq org-super-agenda-group-custom-types
+        (plist-put org-super-agenda-group-custom-types selector typedef)))
 ;;;; Minor mode
 
 ;;;###autoload
@@ -322,7 +332,8 @@ With prefix argument ARG, turn on if positive, otherwise off."
 
 ;;;; Group selectors
 
-(cl-defmacro org-super-agenda--defgroup (name docstring &key section-name test let*)
+(cl-defmacro org-super-agenda--defgroup (name docstring &key section-name test let*
+                                                             (custom-type 'sexp))
   "Define an agenda-item group function.
 NAME is a symbol that will be appended to `org-super-agenda--group-' to
 construct the name of the group function.  A symbol like `:name'
@@ -341,6 +352,10 @@ separate list.
 :LET* is a `let*' binding form that is bound around the function
 body after the ARGS are made a list.
 
+:CUSTOM-TYPE is a quoted sexp defining a type to use when
+customizing a group of this type via the `customize' interface.
+Defaults to `sexp'. See Info node `(elisp)Customization Types'.
+
 Finally a list of three items is returned, with the value
 returned by :SECTION-NAME as the first item, a list of items not
 matching the :TEST as the second, and a list of items matching as
@@ -355,6 +370,7 @@ the third."
     ;; Associate the group type with this function so the dispatcher can find it
     `(progn
        (setq org-super-agenda-group-types (plist-put org-super-agenda-group-types ,group-type ',function-name))
+       (org-super-agenda--add-custom-type ,group-type ',custom-type)
        (defun ,function-name (items args)
          ,docstring
          (unless (listp args)
@@ -813,7 +829,8 @@ The string should be the priority cookie letter, e.g. \"A\".")
 
 (cl-defmacro org-super-agenda--def-auto-group (name docstring-ending
                                                     &key keyword key-form
-                                                    (header-form 'key) (key-sort-fn #'string<))
+                                                    (header-form 'key) (key-sort-fn #'string<)
+                                                    (custom-type 'sexp))
   "Define an auto-grouping function.
 
 The function will be named `org-super-agenda--auto-group-NAME'.
@@ -866,6 +883,7 @@ of the arguments to the function."
                                                                 :items (nreverse (ht-get groups key)))))))
          (setq org-super-agenda-group-types (plist-put org-super-agenda-group-types
                                                        ,keyword #',fn-name))
+         (org-super-agenda--add-custom-type ,keyword ',custom-type)
          (add-to-list 'org-super-agenda-auto-selector-keywords ,keyword)))))
 
 ;; TODO: auto-year and auto-month groups.  Maybe also auto-quarter,
