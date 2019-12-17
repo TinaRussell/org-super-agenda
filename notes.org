@@ -305,15 +305,6 @@ Here's a command I use to test my custom-type stuff:
     (customize-option 'org-super-agenda-groups))
 #+end_src
 
-**** Collapsible plist
-[[info:elisp#Defining%20New%20Types][info:elisp#Defining New Types]]
-[[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::3506][plist widget]]
-[[file:/usr/local/share/emacs/26.3.50/lisp/cus-edit.el.gz::3087][custom-face-edit widget]]
-
-#+begin_src emacs-lisp :results silent
-  (define-widget 'collapsible-plist 'plist)
-#+end_src
-
 **** One or more
 [[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::3647][repeat widget]]
 [[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::2575][editable-list widget]]
@@ -348,6 +339,95 @@ Here's a command I use to test my custom-type stuff:
   (defcustom tina/oom-test '(:meow nil)
     "Test my custom widget"
     :type '(plist :options ((:meow (one-or-more (const purr))))))
+#+end_src
+
+**** Collapsible plist
+[[info:elisp#Defining%20New%20Types][info:elisp#Defining New Types]]
+[[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::3506][plist widget]]
+[[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::2745][group widget]]
+[[file:/usr/local/share/emacs/26.3.50/lisp/cus-edit.el.gz::3087][custom-face-edit widget]]
+[[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::2210][checklist widget]]
+
+For this to work, we'll need to create a crazy mutant baby of [[help:widget-group-value-create][Function: widget-group-value-create]] and [[help:custom-face-edit-value-create][Function: custom-face-edit-value-create]].
+
+#+begin_src emacs-lisp :results silent
+  (define-widget 'collapsible-plist 'list
+    ;; we can't inherit from `plist', or `widget-plist-convert-widget'
+    ;; will run after `tina/cpl-convert-widget' and ruin our widget,
+    ;; overwriting the `collapsible-checklist' with a regular checklist
+    "Like `plist', but unused options are hidden by default"
+    :extra-offset 3
+    :key-type '(symbol :tag "Key")
+    :value-type '(sexp :tag "Value")
+    :convert-widget 'tina/cpl-convert-widget
+    :tag "Plist")
+
+  (defun tina/cpl-convert-widget (widget)
+    (setq widget (widget-plist-convert-widget widget))
+    (let ((args (widget-get widget :args)))
+      (setcar (car (cl-member-if (lambda (x) (eq (car x) 'checklist)) args))
+              'collapsible-checklist)
+      (widget-put widget :args args))
+    widget)
+
+  (defcustom tina/cpl-test '(:sonic nil)
+    "Test my custom widget"
+    :type '(collapsible-plist :options ((:sonic (one-or-more (const run)))
+                                        (:tails (one-or-more (const fly)))
+                                        (:knuckles (one-or-more (const punch))))))
+
+  (define-widget 'collapsible-checklist 'checklist
+    "Like `checklist', but unchecked items are hidden by default"
+    :value-create 'tina/ccl-value-create)
+
+  (defun tina/ccl-value-create (widget)
+    (let* ((alist (widget-checklist-match-find
+                   widget (widget-get widget :value)))
+           (args  (widget-get widget :args))
+           (show-all (widget-get widget :show-all-options))
+           (buttons  (widget-get widget :buttons))
+           entry)
+      (unless (looking-back "^ *" (line-beginning-position))
+        (insert ?\n))
+      (if (or alist show-all)
+          (dolist (prop args)
+            (setq entry (assq prop alist))
+            (when (or entry show-all)
+              (widget-checklist-add-item widget prop entry)))
+        (insert (propertize "-- No options selected --" 'face 'shadow) ?\n))
+      (let ((indent (widget-get widget :indent)))
+        (when indent (insert-char ?\s (widget-get widget :indent))))
+      (push (widget-create-child-and-convert
+             widget 'visibility
+             :help-echo "Show or hide all group options."
+             :button-face 'custom-visibility
+             :pressed-face 'custom-visibility
+             :mouse-face 'highlight
+             :on "Hide Unused Options" :off "Show All Options"
+             :on-glyph nil :off-glyph nil
+             :always-active t
+             :action 'tina/ccl-value-visibility-action
+             show-all)
+            buttons)
+      (insert ?\n)
+      (widget-put widget :buttons buttons)
+      (widget-put widget :children (nreverse (widget-get widget :children)))))
+
+  (defun tina/ccl-value-visibility-action (widget &rest _ignore)
+    ;; Pretty much the same as `custom-face-edit-value-visibility-action'.
+    (let ((parent (widget-get widget :parent)))
+      (widget-put parent :show-all-options
+          (not (widget-get parent :show-all-options)))
+      (custom-redraw parent)))
+#+end_src
+
+***** Replace something in a nested list
+#+begin_src emacs-lisp :results silent
+  (setq test-seq '((sonic tails knuckles) (eggman rouge omega) (eggman orbot cubot)))
+
+  (setcar (car (cl-member-if (lambda (x) (eq (car x) 'eggman)) test-seq)) 'shadow)
+
+  test-seq
 #+end_src
 
 ** SOMEDAY More functional approach
