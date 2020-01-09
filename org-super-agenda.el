@@ -221,6 +221,43 @@ map).")
         (not (widget-get parent :show-all-options)))
     (custom-redraw parent)))
 
+;;;;; One or more
+
+(define-widget 'osa--one-or-more 'repeat
+  "Like `repeat', but effectively inline when set with only one value.
+In other words, with one item, the value will be the value of the
+item, but with multiple items, the value will be a list of the
+values of those items."
+  :value-to-internal 'org-super-agenda--oom-value-to-internal
+  :value-to-external 'org-super-agenda--oom-value-to-external
+  :match 'org-super-agenda--oom-match)
+
+(defun org-super-agenda--oom-value-to-internal (widget value)
+  (let ((type (car (widget-get widget :args))))
+    ;; If the value is a list...
+    (if (and (listp value)
+             ;; ...and does not match as a single item of the type
+             ;; specified in the widget arguments...
+             ;; (this is in case `one-or-more' is given a custom type
+             ;; that is itself a list of some kind)
+             (not (if (widget-get type :inline)
+                      (widget-apply type :match-inline value)
+                    (widget-apply type :match value))))
+        ;; ... pass the list as is.
+        value
+      ;; Otherwise, it's a single item. Put it in a list
+      (list value))))
+
+(defun org-super-agenda--oom-value-to-external (_widget value)
+  ;; In this direction, it's easier.
+  (if (and (listp value) (not (cdr value)))
+      (car value)
+    value))
+
+(defun org-super-agenda--oom-match (widget value)
+  (or (widget-editable-list-match widget value)
+      (widget-editable-list-match widget (list value))))
+
 ;;;; Customization
 
 (defgroup org-super-agenda nil
@@ -373,10 +410,17 @@ marker."
     (buffer-substring (org-entry-beginning-position)
                       (org-entry-end-position))))
 
+(defun org-super-agenda--make-fancy-keyword-string (keyword)
+  "Return KEYWORD as a string, such that :key-word becomes \"Key-Word\""
+  (-> keyword
+      (symbol-name)
+      (substring 1)
+      (upcase-initials)))
+
 (defun org-super-agenda--add-custom-type (selector typedef)
   "Add SELECTOR & its TYPEDEF to `org-super-agenda-group-custom-types'."
-  (when (eq (car-safe typedef) 'quote)
-    (setq typedef (cadr typedef)))
+  (unless (eq (car-safe typedef) 'const)
+    (setq typedef (list 'osa--one-or-more :tag (org-super-agenda--make-fancy-keyword-string selector) typedef)))
   (setq org-super-agenda-group-custom-types
         (plist-put org-super-agenda-group-custom-types selector typedef)))
 
