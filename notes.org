@@ -274,21 +274,22 @@ I just discovered the =cl-seq= library, which includes =cl-subsetp=, which might
 
 I might be able to use =org-agenda-custom-commands-local-options= as a guide.
 
-*** Tina invades [50%]
+*** Tina invades [75%]
 Muahahahaa!! It is I, Tina Russell, invading your planning space. I have a bold vision for a Customize interface to ~org-super-agenda~. It involves:
 - [X] A new plist
 - [X] A new keyword, ~:custom-type~, for ~org-super-agenda--defgroup~
 - [X] ...and also for ~org-super-agenda--def-auto-group~
-- [-] ~:custom-type~ entries for one-off group definitions [50%]
+- [-] ~:custom-type~ entries for one-off group definitions [42%]
   - [X] Date/time related
   - [X] Effort
   - [ ] Misc
   - [ ] Priority
   - [ ] Auto-group
   - [X] Special
+  - [ ] Group transformers
 - [X] Function(s) to build the composite type for ~org-super-agenda-groups~
-- [ ] Widget: one-or-more
-- [ ] Widget: collapsible plist
+- [X] Widget: one-or-more
+- [X] Widget: collapsible plist
 - [ ] Make sure it all works
 
 Here's a command I use to test my custom-type stuff:
@@ -315,12 +316,24 @@ Here's a command I use to test my custom-type stuff:
 [[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::2745][group widget]]
 [[file:/usr/local/share/emacs/26.3.50/lisp/wid-edit.el.gz::2210][checklist widget]]
 #+begin_src emacs-lisp :results silent
-  (defun tina/oom-value-to-internal (_widget value)
-    (if (listp value)
-        value
-      (list value)))
+  (defun tina/oom-value-to-internal (widget value)
+    (let ((type (car (widget-get widget :args))))
+      ;; If the value is a list...
+      (if (and (listp value)
+               ;; ...and does not match as a single item of the type
+               ;; specified in the widget arguments...
+               ;; (this is in case `one-or-more' is given a custom type
+               ;; that is itself a list of some kind)
+               (not (if (widget-get type :inline)
+                        (widget-apply type :match-inline value)
+                      (widget-apply type :match value))))
+          ;; ... pass the list as is.
+          value
+        ;; Otherwise, it's a single item. Put it in a list
+        (list value))))
 
   (defun tina/oom-value-to-external (_widget value)
+    ;; In this direction, it's easier.
     (if (and (listp value) (not (cdr value)))
         (car value)
       value))
@@ -339,6 +352,10 @@ Here's a command I use to test my custom-type stuff:
   (defcustom tina/oom-test '(:meow nil)
     "Test my custom widget"
     :type '(plist :options ((:meow (one-or-more (const purr))))))
+
+  (defcustom tina/oom-list-test '(:meow (?G 42 ignore))
+    "Test my custom widget with a list type"
+    :type '(plist :options ((:meow (one-or-more (list character integer function))))))
 #+end_src
 
 **** Collapsible plist
