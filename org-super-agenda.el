@@ -147,6 +147,80 @@ only with point on the group headers (e.g. use `origami' to fold
 group headings by binding a key to `origami-toggle-node' in this
 map).")
 
+;;;; Widgets
+
+;;;;; Collapsible plist
+
+(define-widget 'osa--collapsible-plist 'list
+  ;; we can't inherit from `plist', or `widget-plist-convert-widget'
+  ;; will run after `org-super-agenda--cpl-convert-widget' and ruin
+  ;; our widget, overwriting the `osa--collapsible-checklist' with a
+  ;; regular checklist.
+  "Like `plist', but unused options are hidden by default"
+  :extra-offset 0
+  :key-type '(symbol :tag "Key")
+  :value-type '(sexp :tag "Value")
+  :convert-widget 'org-super-agenda--cpl-convert-widget
+  :tag "Group")
+
+(defun org-super-agenda--cpl-convert-widget (widget)
+  ;; first, make a regular plist widget
+  (setq widget (widget-plist-convert-widget widget))
+  ;; then, in its :args value, look for a widget with a car of
+  ;; `checklist', and change that to `osa--collapsible-checklist'
+  (let ((args (widget-get widget :args)))
+    (setcar (car (cl-member-if (lambda (x) (eq (car x) 'checklist)) args))
+            'osa--collapsible-checklist)
+    (widget-put widget :args args))
+  widget)
+
+;;;;; Collapsible checklist
+
+(define-widget 'osa--collapsible-checklist 'checklist
+  "Like `checklist', but unchecked items are hidden by default"
+  :value-create 'org-super-agenda--ccl-value-create)
+
+(defun org-super-agenda--ccl-value-create (widget)
+  ;; Adapted from the function `custom-face-edit-value-create'.
+  (let* ((alist (widget-checklist-match-find
+                 widget (widget-get widget :value)))
+         (args  (widget-get widget :args))
+         (show-all (widget-get widget :show-all-options))
+         (buttons  (widget-get widget :buttons))
+         entry)
+    (unless (looking-back "^ *" (line-beginning-position))
+      (insert ?\n))
+    (if (or alist show-all)
+        (dolist (prop args)
+          (setq entry (assq prop alist))
+          (when (or entry show-all)
+            (widget-checklist-add-item widget prop entry)))
+      (insert (propertize "-- No options selected --" 'face 'shadow) ?\n))
+    (let ((indent (widget-get widget :indent)))
+      (when indent (insert-char ?\s (widget-get widget :indent))))
+    (push (widget-create-child-and-convert
+           widget 'visibility
+           :help-echo "Show or hide all group options."
+           :button-face 'custom-visibility
+           :pressed-face 'custom-visibility
+           :mouse-face 'highlight
+           :on "Hide Unused Options" :off "Show All Options"
+           :on-glyph nil :off-glyph nil
+           :always-active t
+           :action 'org-super-agenda--ccl-value-visibility-action
+           show-all)
+          buttons)
+    (insert ?\n)
+    (widget-put widget :buttons buttons)
+    (widget-put widget :children (nreverse (widget-get widget :children)))))
+
+(defun org-super-agenda--ccl-value-visibility-action (widget &rest _ignore)
+  ;; Pretty much the same as `custom-face-edit-value-visibility-action'.
+  (let ((parent (widget-get widget :parent)))
+    (widget-put parent :show-all-options
+        (not (widget-get parent :show-all-options)))
+    (custom-redraw parent)))
+
 ;;;; Customization
 
 (defgroup org-super-agenda nil
@@ -313,30 +387,39 @@ selector appearing under :options."
   (let ((choices
          (cl-loop for (keyword typedef) on org-super-agenda-group-custom-types by 'cddr
                   collect (list keyword typedef))))
-    `(plist :options ((:name (choice
-                              (const :tag "Automatic" nil)
-                              string
-                              (const :tag "None" none)))
-                      ;; I wish this one had a preview.
-                      ;; It’s a total hack as it is, though.
-                      (:face (choice
-                              (face :tag "Existing face")
-                              (custom-face-edit :tag "Custom face attributes"
-                                                ;; Get the attributes from the `custom-face-edit' widget
-                                                ,@(plist-get (cdr custom-face-edit) :args)
-                                                ;; ... and add one more
-                                                (group :inline t :sibling-args nil
-                                                       (const :format "" :append)
-                                                       (choice :tag "Append"
-                                                               (const :tag "Yes" t)
-                                                               (const :tag "No" nil))))))
-                      (:transformer (choice (function :help-echo "A function, to which the item string will be passed as argument")
-                                            (sexp :help-echo "A sexp, in which the item string is bound to `it'")))
-                      ,@choices
-                      (:order integer)
-                      (:and (plist :options ,choices))
-                      (:not (plist :options ,choices))
-                      (:discard (plist :options ,choices))))))
+    `(osa--collapsible-plist
+      :options ((:name (choice :value nil
+                               (const :tag "Automatic" nil)
+                               string
+                               (const :tag "None" none)))
+                ;; I wish this one had a preview.
+                ;; It's a total hack as it is, though.
+                (:face (choice
+                        (face :tag "Existing face")
+                        (custom-face-edit :tag "Custom face attributes"
+                                          :format "\n%v"
+                                          :value-create (lambda (widget)
+                                                          (insert-char ?\s (- (widget-get widget :indent)
+                                                                              (widget-get widget :extra-offset)))
+                                                          (custom-face-edit-value-create widget))
+                                          ;; Get the attributes from the `custom-face-edit' widget
+                                          ,@(plist-get (cdr custom-face-edit) :args)
+                                          ;; ... and add one more
+                                          (group :inline t :sibling-args nil
+                                                 (const :format "" :append)
+                                                 (choice :tag "Append"
+                                                         (const :tag "Yes" t)
+                                                         (const :tag "No" nil))))))
+                (:transformer (choice (function :help-echo "A function, to which the item string will be passed as argument")
+                                      (sexp :help-echo "A sexp, in which the item string is bound to `it'")))
+                ,@choices
+                (:order integer)
+                (:and (osa--collapsible-plist :tag "AND selectors"
+                                              :options ,choices))
+                (:not (osa--collapsible-plist :tag "NOT selectors"
+                                              :options ,choices))
+                (:discard (osa--collapsible-plist :tag "DISCARD selectors"
+                                                  :options ,choices))))))
 
 (defun org-super-agenda--add-the-big-custom-type ()
   "Create and add the customization type for `org-super-agenda-groups'.
