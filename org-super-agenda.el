@@ -535,10 +535,12 @@ the third."
                                       [":let*" (&rest &or symbolp (gate symbolp &optional def-form))]])))
   (let ((group-type (intern (concat ":" (symbol-name name))))
         (function-name (intern (concat "org-super-agenda--group-" (symbol-name name)))))
+    (when (symbolp custom-type)
+      (setq custom-type (list 'quote custom-type)))
     ;; Associate the group type with this function so the dispatcher can find it
     `(progn
        (setq org-super-agenda-group-types (plist-put org-super-agenda-group-types ,group-type ',function-name))
-       (org-super-agenda--add-custom-type ,group-type ',custom-type)
+       (org-super-agenda--add-custom-type ,group-type ,custom-type)
        (defun ,function-name (items args)
          ,docstring
          (unless (listp args)
